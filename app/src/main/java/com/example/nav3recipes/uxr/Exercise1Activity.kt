@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
@@ -122,6 +123,66 @@ class TitledSinglePaneSceneStrategy<T : Any> : SceneStrategy<T> {
     }
 }
 
+data class VerticalListDetailScene<T : Any>(
+    override val key: Any,
+    val listEntry: NavEntry<T>,
+    val detailEntry: NavEntry<T>,
+    override val previousEntries: List<NavEntry<T>>,
+) : Scene<T> {
+    override val entries: List<NavEntry<T>> = listOf(listEntry, detailEntry)
+    override val content: @Composable () -> Unit = {
+        Column {
+            Row(modifier = Modifier.weight(0.5f)) {
+                listEntry.Content()
+            }
+            Row(modifier = Modifier.weight(0.5f)) {
+                detailEntry.Content()
+            }
+        }
+
+    }
+
+    companion object {
+        internal const val VERTICAL_LIST_SCENE_KEY = "VerticalListScene"
+        fun verticalListScene() = mapOf(VERTICAL_LIST_SCENE_KEY to true)
+    }
+}
+
+class VerticalListDetailSceneStrategy<T : Any> : SceneStrategy<T> {
+    @Composable
+    override fun calculateScene(entries: List<NavEntry<T>>, onBack: (Int) -> Unit): Scene<T>? {
+
+        val windowInfo = LocalWindowInfo.current
+
+
+        // Return null if the current window width is greater than height so we show the side by side
+        if (windowInfo.containerSize.width > windowInfo.containerSize.height) {
+            return null
+        }
+
+        val lastTwoEntries = entries.takeLast(2)
+
+        return if (lastTwoEntries.size == 2 &&
+            lastTwoEntries.all { it.metadata.containsKey(VerticalListDetailScene.VERTICAL_LIST_SCENE_KEY) }
+        ) {
+            val firstEntry = lastTwoEntries.first()
+            val secondEntry = lastTwoEntries.last()
+
+            // The scene key must uniquely represent the state of the scene.
+            val sceneKey = Pair(firstEntry.contentKey, secondEntry.contentKey)
+
+            VerticalListDetailScene(
+                key = sceneKey,
+                previousEntries = entries.dropLast(1),
+                listEntry = firstEntry,
+                detailEntry = secondEntry
+            )
+        } else {
+            null
+        }
+
+    }
+}
 
 class Exercise1Activity : ComponentActivity() {
 
@@ -139,12 +200,13 @@ class Exercise1Activity : ComponentActivity() {
             }
             val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>(directive = directive)
             val titledSinglePaneSceneStrategy = remember { TitledSinglePaneSceneStrategy<NavKey>() }
+            val verticalListDetailSceneStrategy = remember { VerticalListDetailSceneStrategy<NavKey>() }
 
             Scaffold { paddingValues ->
                 NavDisplay(
                     backStack = backStack,
                     onBack = { backStack.removeLastOrNull() },
-                    sceneStrategy = listDetailStrategy then titledSinglePaneSceneStrategy ,
+                    sceneStrategy = listDetailStrategy then verticalListDetailSceneStrategy then titledSinglePaneSceneStrategy ,
                     modifier = Modifier.padding(paddingValues),
                     entryProvider = entryProvider {
                         entry<ConversationList>(
@@ -155,7 +217,7 @@ class Exercise1Activity : ComponentActivity() {
                                             modifier = Modifier.background(Grey90)
                                         )
                                     }
-                                ) + TitledSinglePaneScene.titleScene() + Pair(TITLE_TEXT, "Conversation List")
+                                ) + TitledSinglePaneScene.titleScene() + VerticalListDetailScene.verticalListScene() + Pair(TITLE_TEXT, "Conversation List")
                         ) {
                             ConversationListScreen(
                                 onConversationClicked = { conversationDetail ->
@@ -166,7 +228,7 @@ class Exercise1Activity : ComponentActivity() {
                             )
                         }
                         entry<ConversationDetail>(
-                            metadata = ListDetailSceneStrategy.detailPane() + TitledSinglePaneScene.titleScene() + Pair(TITLE_TEXT, "Conversation Detail")
+                            metadata = ListDetailSceneStrategy.detailPane() + VerticalListDetailScene.verticalListScene()
                         ) { key ->
                             ConversationDetailScreen(key)
                         }
